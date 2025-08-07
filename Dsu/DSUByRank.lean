@@ -4,17 +4,17 @@ import Mathlib.Data.Fintype.Basic
 import Mathlib.Data.Finset.Basic
 import Mathlib.Algebra.BigOperators.Group.Finset.Basic
 
-structure DSU (n: Nat) where
+structure DSU.Data (n: Nat) where
     parent: Fin n -> Fin n
     rank : Fin n -> Nat
     max_rank : Nat
     rank_capped : forall (i: Fin n), rank i < max_rank
     rank_invariant : forall (i: Fin n), parent i = i ∨ rank (parent i) > rank i
 
-inductive Find.Result (n: Nat) (dsu: DSU n) where
-    | res (root: Fin n) (resulting_dsu: DSU n) (hSameRank: dsu.rank = resulting_dsu.rank) (hRootBefore : resulting_dsu.parent root = root) (hRootAfter: dsu.parent root = root)
+inductive Find.Result (n: Nat) (dsu: DSU.Data n) where
+    | res (root: Fin n) (resulting_dsu: DSU.Data n) (hSameRank: dsu.rank = resulting_dsu.rank) (hRootBefore : resulting_dsu.parent root = root) (hRootAfter: dsu.parent root = root)
 
-def find' {n: Nat} (idx: Fin n) (dsu: DSU n)
+def find' {n: Nat} (idx: Fin n) (dsu: DSU.Data n)
                 : Find.Result n dsu  :=
     let par := dsu.parent idx
     if parEqIdx: par = idx then Find.Result.res par dsu (by rfl) (by grind) (by grind)
@@ -57,7 +57,7 @@ def find' {n: Nat} (idx: Fin n) (dsu: DSU n)
         · assumption
   )
 
-theorem parentRankBigger: forall {n: Nat} (i j: Fin n) (dsu: DSU n),
+theorem parentRankBigger: forall {n: Nat} (i j: Fin n) (dsu: DSU.Data n),
         ¬ (dsu.parent i = i) ->  (dsu.parent i = j )  -> dsu.rank j > dsu.rank i := by
         intro n i j dsu
         intro hNotRoot
@@ -67,8 +67,8 @@ theorem parentRankBigger: forall {n: Nat} (i j: Fin n) (dsu: DSU n),
         · rw [<-hParent]
           assumption
 
-def union'.helper {n: Nat} (smaller_p bigger_p : Fin n ) ( dsu: DSU n ) (hRankBigger: dsu.rank smaller_p < dsu.rank bigger_p )
-    : DSU n :=
+def union'.helper {n: Nat} (smaller_p bigger_p : Fin n ) ( dsu: DSU.Data n ) (hRankBigger: dsu.rank smaller_p < dsu.rank bigger_p )
+    : DSU.Data n :=
     { dsu with
     parent := (fun i => if i = smaller_p then bigger_p else dsu.parent i),
     rank := dsu.rank,
@@ -82,7 +82,7 @@ def union'.helper {n: Nat} (smaller_p bigger_p : Fin n ) ( dsu: DSU n ) (hRankBi
     rank_capped := dsu.rank_capped 
     }
 
-def union' {n: Nat} (id1: Fin n) (id2: Fin n) (dsu: DSU n) : DSU n :=
+def union' {n: Nat} (id1: Fin n) (id2: Fin n) (dsu: DSU.Data n) : DSU.Data n :=
     let ⟨ p1 , dsu', hSameRank', hRootBefore', hRootAfter' ⟩ := find' id1 dsu 
     let ⟨ p2 , dsu'', hSameRank'', hRootBefore'', hRootAfter'' ⟩ := find' id2 dsu'
     if p1EqP2: p1 = p2 then dsu''
@@ -150,3 +150,46 @@ def union' {n: Nat} (id1: Fin n) (id2: Fin n) (dsu: DSU n) : DSU n :=
                 )
 }
 )
+
+
+abbrev DsuM (n: Nat) (a: Type) := StateM (DSU.Data n) a 
+
+-- def DSU.parent {n} (dsu: DSU n) :=
+--     DSU.Data.parent dsu
+
+def initDSU (size: Nat): DSU.Data size :=
+    @DSU.Data.mk size (fun i => i) (fun i => 0) 1
+                 (by intros ; simp) (by intros; simp)
+
+
+def DSU.find {n} (idx: Fin n) : DsuM n (Fin n) := do
+    let dsu <- get
+    let ⟨ parent, dsu', _ , _ , _⟩ := find' idx dsu
+    set dsu'
+    return parent
+    
+def DSU.union {n} (idx1: Fin n) (idx2: Fin n) : DsuM n Unit := do
+    let dsu <- get
+    let dsu' := union' idx1 idx2 dsu
+    set dsu'
+
+def dsu1 := initDSU 10
+
+def test1 : DsuM 10 Unit := do
+    DSU.union 0 1
+    DSU.union 2 3
+    DSU.union 4 5
+    DSU.union 6 7
+    DSU.union 8 9
+    DSU.union 1 2
+    DSU.union 7 8
+
+#eval StateT.run' (test1 >>= (fun  () => DSU.find 0 )) dsu1
+#eval StateT.run' (test1 >>= (fun  () => DSU.find 1 )) dsu1
+#eval StateT.run' (test1 >>= (fun  () => DSU.find 2 )) dsu1
+#eval StateT.run' (test1 >>= (fun  () => DSU.find 3 )) dsu1
+
+#eval StateT.run' (test1 >>= (fun  () => DSU.find 6 )) dsu1
+#eval StateT.run' (test1 >>= (fun  () => DSU.find 7 )) dsu1
+#eval StateT.run' (test1 >>= (fun  () => DSU.find 8 )) dsu1
+#eval StateT.run' (test1 >>= (fun  () => DSU.find 9 )) dsu1
